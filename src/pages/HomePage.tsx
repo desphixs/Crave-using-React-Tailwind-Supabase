@@ -30,6 +30,24 @@ const HomePage = () => {
     // Global loading state.
     const [loading, setLoading] = useState(true);
 
+    // Search and Category states
+    const [searchQuery, setSearchQuery] = useState("");
+    const [activeCategory, setActiveCategory] = useState("All");
+
+    const categories = ["All", "Breakfast", "Lunch", "Dinner", "Vegan", "Dessert"];
+
+    /**
+     * filteredRecipes: A derived value that updates whenever recipes, 
+     * searchQuery, or activeCategory changes.
+     */
+    const filteredRecipes = recipes.filter((recipe) => {
+        const matchesCategory = activeCategory === "All" || recipe.category === activeCategory;
+        const matchesSearch = 
+            recipe.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            recipe.description?.toLowerCase().includes(searchQuery.toLowerCase());
+        return matchesCategory && matchesSearch;
+    });
+
     /**
      * fetchRecipes: Grabs all recipes and their associated like counts.
      */
@@ -144,9 +162,34 @@ const HomePage = () => {
                 </h1>
                 <p className="max-w-2xl mx-auto text-zinc-400 text-lg md:text-xl font-medium leading-relaxed">Join a community of home chefs sharing their best-kept secrets. Find inspiration for your next meal or share your own masterpiece.</p>
 
-                <div className="max-w-xl mx-auto relative group">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500 group-focus-within:text-pink-500 transition-colors" />
-                    <input type="text" placeholder="Search recipes, ingredients, or chefs..." className="w-full bg-zinc-900/50 border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-zinc-600 focus:outline-none focus:border-pink-600/50 focus:ring-1 focus:ring-pink-600/50 transition-all backdrop-blur-sm" />
+                <div className="max-w-xl mx-auto space-y-6">
+                    <div className="relative group">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500 group-focus-within:text-pink-500 transition-colors" />
+                        <input 
+                            type="text" 
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search recipes, ingredients, or chefs..." 
+                            className="w-full bg-zinc-900/50 border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-zinc-600 focus:outline-none focus:border-pink-600/50 focus:ring-1 focus:ring-pink-600/50 transition-all backdrop-blur-sm" 
+                        />
+                    </div>
+
+                    {/* Category Filters */}
+                    <div className="flex flex-wrap items-center justify-center gap-3">
+                        {categories.map((category) => (
+                            <button
+                                key={category}
+                                onClick={() => setActiveCategory(category)}
+                                className={`px-5 py-2 rounded-xl text-sm font-bold transition-all duration-300 ${
+                                    activeCategory === category
+                                        ? "bg-pink-600 text-white shadow-lg shadow-pink-600/20"
+                                        : "bg-zinc-900/50 text-zinc-400 border border-zinc-800 hover:border-zinc-700 hover:text-zinc-300"
+                                }`}
+                            >
+                                {category}
+                            </button>
+                        ))}
+                    </div>
                 </div>
             </section>
 
@@ -154,7 +197,9 @@ const HomePage = () => {
             <section>
                 <div className="flex items-end justify-between mb-8">
                     <div>
-                        <h2 className="text-2xl font-bold text-white tracking-tight">Trending Now</h2>
+                        <h2 className="text-2xl font-bold text-white tracking-tight">
+                            {activeCategory === "All" ? "Trending Now" : `${activeCategory} Recipes`}
+                        </h2>
                         <div className="h-1 w-12 bg-pink-600 mt-2 rounded-full" />
                     </div>
                     <Link to="/dashboard/add">
@@ -171,9 +216,9 @@ const HomePage = () => {
                             <div key={i} className="aspect-[4/5] rounded-3xl bg-zinc-900 border border-zinc-800 animate-pulse" />
                         ))}
                     </div>
-                ) : recipes.length > 0 ? (
+                ) : filteredRecipes.length > 0 ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-                        {recipes.map((recipe) => (
+                        {filteredRecipes.map((recipe) => (
                             <RecipeCard 
                                 key={recipe.id} 
                                 recipe={recipe} 
@@ -196,17 +241,24 @@ const HomePage = () => {
                 ) : (
                     <div className="flex flex-col items-center justify-center py-24 text-center space-y-6 bg-zinc-900/30 rounded-[3rem] border border-dashed border-zinc-800">
                         <div className="bg-zinc-900 p-6 rounded-3xl">
-                            <UtensilsCrossed className="w-12 h-12 text-zinc-700" />
+                            <Search className="w-12 h-12 text-zinc-700" />
                         </div>
                         <div className="space-y-2">
-                            <h3 className="text-xl font-bold text-white">The kitchen is empty!</h3>
-                            <p className="text-zinc-500 max-w-xs mx-auto">No recipes have been shared yet. Be the first to publish a masterpiece!</p>
+                            <h3 className="text-xl font-bold text-white">No matches found</h3>
+                            <p className="text-zinc-500 max-w-xs mx-auto">
+                                We couldn't find any recipes matching "{searchQuery}" in {activeCategory}. Try a different keyword!
+                            </p>
                         </div>
-                        <Link to="/dashboard/add">
-                            <Button variant="outline" className="rounded-xl border-zinc-800 hover:bg-zinc-800">
-                                Share a Recipe
-                            </Button>
-                        </Link>
+                        <Button 
+                            variant="outline" 
+                            onClick={() => {
+                                setSearchQuery("");
+                                setActiveCategory("All");
+                            }}
+                            className="rounded-xl border-zinc-800 hover:bg-zinc-800"
+                        >
+                            Clear All Filters
+                        </Button>
                     </div>
                 )}
             </section>
