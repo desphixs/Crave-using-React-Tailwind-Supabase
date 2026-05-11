@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
-import { Bookmark, Search, UtensilsCrossed, Loader2, ArrowRight } from "lucide-react";
+import { Bookmark, UtensilsCrossed, Loader2, ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import RecipeCard from "@/components/RecipeCard";
 import { Button } from "@/components/ui/button";

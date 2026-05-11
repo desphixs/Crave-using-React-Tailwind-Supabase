@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/AuthContext";
-import { Utensils, Heart, Bookmark, MessageSquare, Edit3, Trash2, Plus, Clock, ChevronRight, Search } from "lucide-react";
+import { Utensils, Heart, Bookmark, MessageSquare, Edit3, Trash2, Plus } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -128,10 +128,10 @@ const DashboardPage = () => {
 
             {/* Stats Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard icon={<Utensils className="text-pink-500" />} label="My Recipes" value={stats.totalRecipes} color="pink" />
-                <StatCard icon={<Heart className="text-rose-500" />} label="Total Likes" value={stats.totalLikes} color="rose" />
-                <StatCard icon={<Bookmark className="text-yellow-500" />} label="Total Saves" value={stats.totalSaves} color="yellow" />
-                <StatCard icon={<MessageSquare className="text-blue-500" />} label="Total Comments" value={stats.totalComments} color="blue" />
+                <StatCard icon={<Utensils className="text-pink-500" />} label="My Recipes" value={stats.totalRecipes} />
+                <StatCard icon={<Heart className="text-rose-500" />} label="Total Likes" value={stats.totalLikes} />
+                <StatCard icon={<Bookmark className="text-yellow-500" />} label="Total Saves" value={stats.totalSaves} />
+                <StatCard icon={<MessageSquare className="text-blue-500" />} label="Total Comments" value={stats.totalComments} />
             </div>
 
             {/* My Recipes List */}
@@ -204,7 +204,7 @@ const DashboardPage = () => {
     );
 };
 
-const StatCard = ({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: number; color: string }) => (
+const StatCard = ({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) => (
     <div className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-[2rem] space-y-4 hover:border-zinc-700 transition-colors">
         <div className="w-12 h-12 rounded-2xl bg-zinc-900 flex items-center justify-center border border-zinc-800">{icon}</div>
         <div>

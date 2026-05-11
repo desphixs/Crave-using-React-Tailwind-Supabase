@@ -1,4 +1,3 @@
-import React from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { Utensils, LogIn, Menu, LayoutDashboard, Bookmark, Search, LogOut, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -96,10 +95,8 @@ const Navbar = () => {
             {/* Mobile Menu Trigger */}
             <div className="md:hidden">
               <Sheet>
-                <SheetTrigger asChild>
-                  <Button variant="ghost" size="icon" className="text-zinc-400">
-                    <Menu className="w-6 h-6" />
-                  </Button>
+                <SheetTrigger render={<Button variant="ghost" size="icon" className="text-zinc-400" />}>
+                  <Menu className="w-6 h-6" />
                 </SheetTrigger>
                 <SheetContent side="right" className="bg-zinc-950 border-zinc-800">
                   <SheetHeader className="mb-8">

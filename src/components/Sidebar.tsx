@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, PlusCircle, Bookmark, Settings } from 'lucide-react';
+import { LayoutDashboard, PlusCircle, Bookmark } from 'lucide-react';
 
 const Sidebar = () => {
   const links = [
