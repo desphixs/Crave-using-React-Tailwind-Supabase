@@ -1,7 +1,9 @@
 import React from 'react';
-import { Link, NavLink } from 'react-router-dom';
-import { Utensils, LogIn, Menu, LayoutDashboard, Bookmark, Search } from 'lucide-react';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Utensils, LogIn, Menu, LayoutDashboard, Bookmark, Search, LogOut, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/context/AuthContext';
+import { toast } from 'sonner';
 import {
   Sheet,
   SheetContent,
@@ -11,6 +13,19 @@ import {
 } from "@/components/ui/sheet";
 
 const Navbar = () => {
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      toast.success('Signed out successfully');
+      navigate('/');
+    } catch (error: any) {
+      toast.error('Error signing out');
+    }
+  };
+
   const navLinks = [
     { to: "/", label: "Explore", icon: Search },
     { to: "/recipe-box", label: "Recipe Box", icon: Bookmark },
@@ -48,13 +63,35 @@ const Navbar = () => {
 
           {/* Auth & Mobile Menu */}
           <div className="flex items-center space-x-4">
-            <Link 
-              to="/login" 
-              className="hidden sm:flex items-center space-x-2 px-5 py-2.5 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition-all duration-300 text-sm font-semibold"
-            >
-              <LogIn className="w-4 h-4" />
-              <span>Sign In</span>
-            </Link>
+            {user ? (
+              <div className="hidden sm:flex items-center space-x-4">
+                <div className="flex items-center space-x-2 px-4 py-2 rounded-full bg-zinc-900 border border-zinc-800">
+                  <div className="w-6 h-6 rounded-full bg-pink-600 flex items-center justify-center">
+                    <User className="w-4 h-4 text-white" />
+                  </div>
+                  <span className="text-xs font-medium text-zinc-300 truncate max-w-[120px]">
+                    {user.email}
+                  </span>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={handleSignOut}
+                  className="text-zinc-400 hover:text-red-400"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Sign Out
+                </Button>
+              </div>
+            ) : (
+              <Link 
+                to="/login" 
+                className="hidden sm:flex items-center space-x-2 px-5 py-2.5 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition-all duration-300 text-sm font-semibold"
+              >
+                <LogIn className="w-4 h-4" />
+                <span>Sign In</span>
+              </Link>
+            )}
 
             {/* Mobile Menu Trigger */}
             <div className="md:hidden">
@@ -94,13 +131,29 @@ const Navbar = () => {
                     
                     <hr className="border-zinc-800 my-2" />
                     
-                    <Link 
-                      to="/login"
-                      className="flex items-center space-x-3 p-4 rounded-2xl bg-pink-600 text-white font-bold hover:bg-pink-700 transition-colors"
-                    >
-                      <LogIn className="w-5 h-5" />
-                      <span>Sign In / Sign Up</span>
-                    </Link>
+                    {user ? (
+                      <div className="space-y-4">
+                        <div className="flex items-center space-x-3 p-4 rounded-2xl bg-zinc-900 border border-zinc-800 text-zinc-300">
+                          <User className="w-5 h-5 text-pink-500" />
+                          <span className="text-sm font-medium truncate">{user.email}</span>
+                        </div>
+                        <button 
+                          onClick={handleSignOut}
+                          className="w-full flex items-center justify-center space-x-3 p-4 rounded-2xl bg-red-500/10 text-red-500 font-bold hover:bg-red-500/20 transition-colors"
+                        >
+                          <LogOut className="w-5 h-5" />
+                          <span>Sign Out</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <Link 
+                        to="/login"
+                        className="flex items-center space-x-3 p-4 rounded-2xl bg-pink-600 text-white font-bold hover:bg-pink-700 transition-colors"
+                      >
+                        <LogIn className="w-5 h-5" />
+                        <span>Sign In / Sign Up</span>
+                      </Link>
+                    )}
                   </div>
                 </SheetContent>
               </Sheet>

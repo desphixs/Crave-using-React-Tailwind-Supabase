@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import DashboardLayout from './components/DashboardLayout';
+import ProtectedRoute from './components/ProtectedRoute';
 
 // Pages
 import HomePage from './pages/HomePage';
@@ -24,15 +25,29 @@ const App = () => {
           <Route path="/recipe/:id" element={<RecipeDetailPage />} />
           <Route path="/login" element={<AuthPage />} />
           
-          {/* Dashboard Routes (Nested) */}
-          <Route path="/dashboard" element={<DashboardLayout />}>
+          {/* Dashboard Routes (Protected) */}
+          <Route 
+            path="/dashboard" 
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+              </ProtectedRoute>
+            }
+          >
             <Route index element={<DashboardPage />} />
             <Route path="add" element={<AddRecipePage />} />
             <Route path="edit/:id" element={<EditRecipePage />} />
           </Route>
           
-          {/* Saved Recipes */}
-          <Route path="/recipe-box" element={<RecipeBoxPage />} />
+          {/* Saved Recipes (Protected) */}
+          <Route 
+            path="/recipe-box" 
+            element={
+              <ProtectedRoute>
+                <RecipeBoxPage />
+              </ProtectedRoute>
+            } 
+          />
         </Routes>
       </div>
     </BrowserRouter>
