@@ -4,7 +4,7 @@
  * Fetches all recipes from Supabase and displays them in a responsive grid with Like functionality.
  */
 
-import React, { useEffect, useState } from "react";
+import  { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import type { Recipe } from "@/types";
 import RecipeCard from "@/components/RecipeCard";

@@ -2,7 +2,6 @@ import { isSupabaseConfigured } from './lib/supabase';
 import StaticApp from './static/StaticApp';
 import { Toaster } from 'sonner';
 
-import React from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import DashboardLayout from "./components/DashboardLayout";

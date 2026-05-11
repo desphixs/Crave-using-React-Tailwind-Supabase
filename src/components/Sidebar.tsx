@@ -1,4 +1,3 @@
-import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, PlusCircle, Bookmark, Settings } from 'lucide-react';
 

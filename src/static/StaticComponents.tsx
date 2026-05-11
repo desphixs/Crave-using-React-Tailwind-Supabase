@@ -1,5 +1,4 @@
-import React from "react";
-import { Utensils, LogIn, Menu, LayoutDashboard, Bookmark, Search, LogOut, User, Heart, Clock, X } from "lucide-react";
+import { Utensils, LogIn, LayoutDashboard, Bookmark, Search, LogOut, User, Heart, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 // --- STATIC NAVBAR ---
