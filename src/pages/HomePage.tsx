@@ -14,10 +14,10 @@ import { Plus, Search, UtensilsCrossed } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 
-// Define a local type that includes like data for our internal state.
-interface RecipeWithLikes extends Recipe {
+interface RecipeWithEngagement extends Recipe {
     like_count: number;
     has_liked: boolean;
+    is_saved: boolean;
 }
 
 const HomePage = () => {
@@ -26,7 +26,7 @@ const HomePage = () => {
     const navigate = useNavigate();
 
     // Memory to hold our enhanced recipe list.
-    const [recipes, setRecipes] = useState<RecipeWithLikes[]>([]);
+    const [recipes, setRecipes] = useState<RecipeWithEngagement[]>([]);
     // Global loading state.
     const [loading, setLoading] = useState(true);
 
@@ -37,22 +37,20 @@ const HomePage = () => {
         try {
             setLoading(true);
 
-            // Fetch recipes and all associated likes in one go using Supabase's powerful nesting.
-            // 'likes(user_id)' tells Supabase to join the likes table for each recipe.
+            // Fetch recipes, likes, and saves in one go.
             const { data, error } = await supabase
                 .from("recipes")
-                .select("*, likes:likes(user_id)")
+                .select("*, likes:likes(user_id), saved_recipes:saved_recipes(user_id)")
                 .order("created_at", { ascending: false });
 
             if (error) throw error;
 
-            // Process the data to calculate counts and check if the current user has liked each one.
+            // Process the data to calculate counts and engagement status.
             const processedRecipes = (data || []).map((recipe: any) => ({
                 ...recipe,
-                // The total number of likes is just the length of the likes array returned by Supabase.
                 like_count: recipe.likes?.length || 0,
-                // We check if the current user's ID exists anywhere in that likes array.
                 has_liked: recipe.likes?.some((l: any) => l.user_id === user?.id) || false,
+                is_saved: recipe.saved_recipes?.some((s: any) => s.user_id === user?.id) || false,
             }));
 
             setRecipes(processedRecipes);
@@ -72,15 +70,12 @@ const HomePage = () => {
      * handleLike: Toggles the like status for a recipe directly from the home feed.
      */
     const handleLike = async (recipeId: string, hasLiked: boolean) => {
-        // If they aren't logged in, they can't like things. Send them to login.
         if (!user) {
             toast.error("Sign in to like recipes!");
             navigate("/login");
             return;
         }
 
-        // OPTIMISTIC UPDATE:
-        // We update the UI immediately before the database responds to make the app feel "instant".
         setRecipes(prev => prev.map(r => {
             if (r.id === recipeId) {
                 return {
@@ -94,17 +89,45 @@ const HomePage = () => {
 
         try {
             if (hasLiked) {
-                // If they already liked it, we remove the row from the 'likes' table.
                 await supabase.from("likes").delete().eq("recipe_id", recipeId).eq("user_id", user.id);
             } else {
-                // If they haven't liked it, we insert a new row.
                 await supabase.from("likes").insert({ recipe_id: recipeId, user_id: user.id });
             }
         } catch (error) {
-            // If the database call fails, we should technically revert the UI, 
-            // but for now we'll just log it and maybe show a toast.
             console.error("Like error:", error);
             toast.error("Something went wrong with that like.");
+        }
+    };
+
+    /**
+     * handleSave: Toggles the saved status for a recipe.
+     */
+    const handleSave = async (recipeId: string, isSaved: boolean) => {
+        if (!user) {
+            toast.error("Sign in to save recipes!");
+            navigate("/login");
+            return;
+        }
+
+        // Optimistic UI update
+        setRecipes(prev => prev.map(r => {
+            if (r.id === recipeId) {
+                return { ...r, is_saved: !isSaved };
+            }
+            return r;
+        }));
+
+        try {
+            if (isSaved) {
+                await supabase.from("saved_recipes").delete().eq("recipe_id", recipeId).eq("user_id", user.id);
+                toast.success("Removed from your Recipe Box");
+            } else {
+                await supabase.from("saved_recipes").insert({ recipe_id: recipeId, user_id: user.id });
+                toast.success("Saved to your Recipe Box!");
+            }
+        } catch (error) {
+            console.error("Save error:", error);
+            toast.error("Could not update your Recipe Box.");
         }
     };
 
@@ -156,11 +179,16 @@ const HomePage = () => {
                                 recipe={recipe} 
                                 likeCount={recipe.like_count}
                                 hasLiked={recipe.has_liked}
-                                // We stop the card's main 'Link' click from firing if they click exactly on the heart.
+                                isSaved={recipe.is_saved}
                                 onLike={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
                                     handleLike(recipe.id, recipe.has_liked);
+                                }}
+                                onSave={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleSave(recipe.id, recipe.is_saved);
                                 }}
                             />
                         ))}

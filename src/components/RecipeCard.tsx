@@ -6,14 +6,16 @@ import { Link } from 'react-router-dom';
 import type { Recipe } from '@/types';
 
 // Import icons to make the card look professional.
-import { Heart, Clock, Utensils } from 'lucide-react';
+import { Heart, Clock, Utensils, Bookmark } from 'lucide-react';
 
 // Define the properties this component expects to receive.
 interface RecipeCardProps {
   recipe: Recipe;
   likeCount?: number;   // How many people liked this recipe total.
   hasLiked?: boolean;   // Has the current user liked this specific recipe?
+  isSaved?: boolean;    // Has the current user saved this recipe to their box?
   onLike?: (e: React.MouseEvent) => void; // A function to run when the heart is clicked.
+  onSave?: (e: React.MouseEvent) => void; // A function to run when the bookmark is clicked.
 }
 
 // The RecipeCard component displays a beautiful preview of a recipe.
@@ -21,7 +23,9 @@ const RecipeCard: React.FC<RecipeCardProps> = ({
   recipe, 
   likeCount = 0, 
   hasLiked = false, 
-  onLike 
+  isSaved = false,
+  onLike,
+  onSave
 }) => {
   return (
     // The whole card is a link that takes the user to the detail page.
@@ -46,21 +50,33 @@ const RecipeCard: React.FC<RecipeCardProps> = ({
         {/* GRADIENT OVERLAY: Makes sure the text is always readable over any image. */}
         <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/20 to-transparent opacity-80 transition-opacity group-hover:opacity-100" />
 
-        {/* LIKE BUTTON: Positioned in the top right. */}
-        <button
-          onClick={onLike}
-          // z-20 ensures it stays on top of everything.
-          className="absolute top-6 right-6 z-20 p-3 rounded-2xl bg-black/20 backdrop-blur-xl border border-white/10 text-white transition-all hover:scale-110 active:scale-95 group/btn"
-        >
-          <div className="flex items-center gap-2">
+        {/* ACTION BUTTONS: Positioned in the top right. */}
+        <div className="absolute top-5 right-5 z-20 flex flex-col gap-2.5">
+          {/* LIKE BUTTON */}
+          <button
+            onClick={onLike}
+            className="w-11 h-11 flex flex-col items-center justify-center rounded-[1rem] bg-black/20 backdrop-blur-xl border border-white/10 text-white transition-all hover:scale-110 active:scale-95 group/btn"
+          >
             <Heart 
-              // If liked, the heart is filled with pink. Otherwise, it's just an outline.
-              className={`w-5 h-5 transition-colors ${hasLiked ? "fill-pink-500 text-pink-500" : "text-white group-hover/btn:text-pink-400"}`} 
+              className={`w-5 h-5 transition-all duration-300 ${hasLiked ? "fill-pink-500 text-pink-500 scale-110" : "text-white group-hover/btn:text-pink-400"}`} 
             />
-            {/* Only show the count if it's greater than zero. */}
-            {likeCount > 0 && <span className="text-xs font-bold font-mono">{likeCount}</span>}
-          </div>
-        </button>
+            {likeCount > 0 && (
+              <span className="text-[9px] font-black font-mono leading-none tracking-tighter mt-0.5">
+                {likeCount > 999 ? `${(likeCount / 1000).toFixed(1)}k` : likeCount}
+              </span>
+            )}
+          </button>
+
+          {/* SAVE BUTTON */}
+          <button
+            onClick={onSave}
+            className="w-11 h-11 flex items-center justify-center rounded-[1rem] bg-black/20 backdrop-blur-xl border border-white/10 text-white transition-all hover:scale-110 active:scale-95 group/save"
+          >
+            <Bookmark 
+              className={`w-5 h-5 transition-all duration-300 ${isSaved ? "fill-yellow-500 text-yellow-500 scale-110" : "text-white group-hover/save:text-yellow-400"}`} 
+            />
+          </button>
+        </div>
 
         {/* INFO OVERLAY: Title, Category, and Meta info at the bottom. */}
         <div className="absolute bottom-0 left-0 right-0 p-8 space-y-3">

@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
 // Import icons to make the UI beautiful.
-import { Loader2, ArrowLeft, Calendar, ChefHat, Clock, ClipboardList, Utensils, MessageSquare, Send, User, Heart } from "lucide-react";
+import { Loader2, ArrowLeft, Calendar, ChefHat, Clock, ClipboardList, Utensils, MessageSquare, Send, User, Heart, Bookmark } from "lucide-react";
 
 const RecipeDetailPage = () => {
     // Read the ID from the URL.
@@ -37,6 +37,8 @@ const RecipeDetailPage = () => {
     const [likeCount, setLikeCount] = useState(0);
     // Memory to track if the current viewer has liked this recipe.
     const [hasLiked, setHasLiked] = useState(false);
+    // Memory to track if the current viewer has saved this recipe.
+    const [isSaved, setIsSaved] = useState(false);
 
     // --- COMMENTS STATE ---
     const [comments, setComments] = useState<Comment[]>([]);
@@ -74,9 +76,19 @@ const RecipeDetailPage = () => {
                     .select("*")
                     .eq("recipe_id", id)
                     .eq("user_id", user.id)
-                    .maybeSingle(); // maybeSingle returns null if no row exists, instead of throwing an error.
+                    .maybeSingle(); 
                 if (likeError) throw likeError;
-                setHasLiked(!!likeData); // Double-bang (!!) converts the object to 'true' or null to 'false'.
+                setHasLiked(!!likeData);
+
+                // 4. Check if the current user has saved it.
+                const { data: saveData, error: saveError } = await supabase
+                    .from("saved_recipes")
+                    .select("*")
+                    .eq("recipe_id", id)
+                    .eq("user_id", user.id)
+                    .maybeSingle();
+                if (saveError) throw saveError;
+                setIsSaved(!!saveData);
             }
 
         } catch (err: any) {
@@ -116,15 +128,12 @@ const RecipeDetailPage = () => {
      * handleLike: Toggles the like status with an optimistic update.
      */
     const handleLike = async () => {
-        // Must be logged in to like.
         if (!user) {
             toast.error("Please sign in to like this recipe!");
             navigate("/login");
             return;
         }
 
-        // OPTIMISTIC UPDATE:
-        // Update the UI immediately so the user feels the app is super fast.
         const originalLiked = hasLiked;
         const originalCount = likeCount;
         
@@ -133,19 +142,41 @@ const RecipeDetailPage = () => {
 
         try {
             if (originalLiked) {
-                // If already liked, remove it.
-                const { error } = await supabase.from("likes").delete().eq("recipe_id", id).eq("user_id", user.id);
-                if (error) throw error;
+                await supabase.from("likes").delete().eq("recipe_id", id).eq("user_id", user.id);
             } else {
-                // If not liked, add it.
-                const { error } = await supabase.from("likes").insert({ recipe_id: id, user_id: user.id });
-                if (error) throw error;
+                await supabase.from("likes").insert({ recipe_id: id, user_id: user.id });
             }
         } catch (error) {
-            // If it fails, revert the state to what it was before.
             setHasLiked(originalLiked);
             setLikeCount(originalCount);
-            toast.error("Could not update your like. Please try again.");
+            toast.error("Could not update your like.");
+        }
+    };
+
+    /**
+     * handleSave: Toggles the saved status with an optimistic update.
+     */
+    const handleSave = async () => {
+        if (!user) {
+            toast.error("Please sign in to save this recipe!");
+            navigate("/login");
+            return;
+        }
+
+        const originalSaved = isSaved;
+        setIsSaved(!originalSaved);
+
+        try {
+            if (originalSaved) {
+                await supabase.from("saved_recipes").delete().eq("recipe_id", id).eq("user_id", user.id);
+                toast.success("Removed from your Recipe Box");
+            } else {
+                await supabase.from("saved_recipes").insert({ recipe_id: id, user_id: user.id });
+                toast.success("Saved to your Recipe Box!");
+            }
+        } catch (error) {
+            setIsSaved(originalSaved);
+            toast.error("Could not update your Recipe Box.");
         }
     };
 
@@ -209,7 +240,7 @@ const RecipeDetailPage = () => {
     });
 
     return (
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pb-24 space-y-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-24 space-y-12">
             {/* Header / Back Navigation */}
             <div className="flex items-center justify-between">
                 <Link to="/dashboard" className="inline-flex items-center text-zinc-400 hover:text-pink-500 transition-colors font-medium text-sm">
@@ -218,43 +249,77 @@ const RecipeDetailPage = () => {
                 </Link>
             </div>
 
-            {/* --- HERO SECTION --- */}
-            <div className="relative aspect-video md:aspect-[21/9] rounded-[2rem] overflow-hidden bg-zinc-900 border border-zinc-800 shadow-2xl">
-                {recipe.image_url ? <img src={recipe.image_url} alt={recipe.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-800 text-zinc-600 font-medium">No image provided</div>}
-                
-                {/* Dark Gradient Overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/60 to-transparent" />
-                
-                {/* LIKE BUTTON (Detail Page) */}
-                <button 
-                    onClick={handleLike}
-                    className="absolute top-8 right-8 z-20 group/like transition-transform active:scale-90"
-                >
-                    <div className="flex flex-col items-center gap-1.5 p-4 rounded-3xl bg-black/30 backdrop-blur-xl border border-white/10 text-white min-w-[70px]">
-                        <Heart className={`w-8 h-8 transition-all duration-300 ${hasLiked ? "fill-pink-500 text-pink-500 scale-110" : "text-white group-hover/like:text-pink-400 group-hover/like:scale-110"}`} />
-                        <span className="text-xs font-black font-mono tracking-tighter">{likeCount}</span>
-                    </div>
-                </button>
+            {/* --- E-COMMERCE STYLE HERO SECTION --- */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 pt-4">
+                {/* Left Column: Image Gallery equivalent */}
+                <div className="relative aspect-square md:aspect-[4/5] rounded-[2rem] overflow-hidden bg-zinc-900 border border-zinc-800 shadow-2xl">
+                    {recipe.image_url ? (
+                        <img src={recipe.image_url} alt={recipe.title} className="w-full h-full object-cover" />
+                    ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-800 text-zinc-600 font-medium">No image provided</div>
+                    )}
+                </div>
 
-                {/* HERO TEXT */}
-                <div className="absolute bottom-0 left-0 right-0 p-8 md:p-12 space-y-4">
-                    <span className="inline-block px-4 py-1.5 rounded-full bg-pink-600/90 backdrop-blur-md text-xs font-bold uppercase tracking-widest text-white border border-pink-500/50">{recipe.category}</span>
-                    <h1 className="text-4xl md:text-6xl font-black text-white tracking-tight leading-tight">{recipe.title}</h1>
-                    <div className="flex flex-wrap items-center gap-6 text-zinc-300 text-sm font-medium pt-2">
-                        <div className="flex items-center gap-2">
-                            <Calendar className="w-4 h-4 text-pink-500" />
-                            <span>{formattedDate}</span>
+                {/* Right Column: Product Details & Actions */}
+                <div className="flex flex-col justify-center space-y-10">
+                    <div className="space-y-6">
+                        <span className="inline-block px-4 py-1.5 rounded-full bg-pink-600/10 text-xs font-bold uppercase tracking-widest text-pink-500 border border-pink-500/20">
+                            {recipe.category}
+                        </span>
+                        
+                        <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white tracking-tight leading-tight">
+                            {recipe.title}
+                        </h1>
+                        
+                        <div className="flex flex-wrap items-center gap-6 text-zinc-400 text-sm font-medium pt-2">
+                            <div className="flex items-center gap-2">
+                                <Calendar className="w-4 h-4 text-pink-500" />
+                                <span>{formattedDate}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Clock className="w-4 h-4 text-pink-500" />
+                                <span>45 mins cook time</span>
+                            </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <Clock className="w-4 h-4 text-pink-500" />
-                            <span>45 mins cook time</span>
-                        </div>
+                    </div>
+
+                    {recipe.description && (
+                        <p className="text-lg text-zinc-300 leading-relaxed border-l-2 border-pink-500/50 pl-6 py-2">
+                            {recipe.description}
+                        </p>
+                    )}
+
+                    {/* Actions (Ecommerce style "Add to Cart" equivalent) */}
+                    <div className="flex items-center gap-4 pt-6 border-t border-zinc-800/50">
+                        <Button 
+                            onClick={handleLike}
+                            className={`flex-1 h-16 rounded-2xl font-bold text-lg transition-all duration-300 shadow-xl ${
+                                hasLiked 
+                                    ? 'bg-pink-600 text-white shadow-pink-600/25 hover:bg-pink-700' 
+                                    : 'bg-white text-zinc-950 hover:bg-zinc-200 hover:scale-[1.02]'
+                            }`}
+                        >
+                            <Heart className={`w-6 h-6 mr-3 ${hasLiked ? 'fill-white' : ''}`} />
+                            {hasLiked ? 'Loved It' : 'Show some Love'} 
+                            <span className={`ml-3 px-3 py-1 rounded-full text-sm ${hasLiked ? 'bg-black/20' : 'bg-zinc-200'}`}>
+                                {likeCount}
+                            </span>
+                        </Button>
+
+                        <Button
+                            onClick={handleSave}
+                            variant="outline"
+                            className={`h-16 w-16 p-0 flex-shrink-0 flex items-center justify-center rounded-2xl border-2 transition-all duration-300 ${
+                                isSaved 
+                                    ? 'border-yellow-500 bg-yellow-500/10 hover:bg-yellow-500/20' 
+                                    : 'border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800 hover:border-zinc-700'
+                            }`}
+                        >
+                            <Bookmark className={`w-6 h-6 transition-colors ${isSaved ? 'fill-yellow-500 text-yellow-500' : 'text-zinc-400'}`} />
+                        </Button>
                     </div>
                 </div>
             </div>
-
-            {/* --- RECIPE CONTENT --- */}
-            {recipe.description && <p className="text-xl text-zinc-300 leading-relaxed max-w-3xl">{recipe.description}</p>}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 pt-8">
                 {/* Ingredients column */}
