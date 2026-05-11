@@ -1,106 +1,116 @@
 /**
  * HomePage.tsx
  * The main discovery feed of the application.
- * Fetches all recipes from Supabase and displays them in a responsive grid.
+ * Fetches all recipes from Supabase and displays them in a responsive grid with Like functionality.
  */
 
-// Import React core and hooks:
-// 'useEffect' handles side effects (like data fetching),
-// 'useState' manages local component data.
 import React, { useEffect, useState } from "react";
-
-// Import the pre-configured Supabase client from our library folder
-// to interact with the backend database.
 import { supabase } from "@/lib/supabase";
-
-// Import the 'Recipe' TypeScript type to ensure our data matches
-// the expected structure (id, title, ingredients, etc.).
 import type { Recipe } from "@/types";
-
-// Import our custom UI component used to render an individual
-// recipe's information in a card format.
 import RecipeCard from "@/components/RecipeCard";
-
-// Import a reusable Button component from our local UI library
-// (likely built with Radix UI or Shadcn/UI).
 import { Button } from "@/components/ui/button";
-
-// Import 'Link' for client-side navigation, allowing users
-// to move between pages without a full browser refresh.
-import { Link } from "react-router-dom";
-
-// Import specific icons from the Lucide library to add
-// visual context to our buttons and headers.
+import { Link, useNavigate } from "react-router-dom";
 import { Plus, Search, UtensilsCrossed } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
+import { toast } from "sonner";
 
-/**
- * HomePage functional component:
- * The entry point for users to browse shared recipes.
- */
+// Define a local type that includes like data for our internal state.
+interface RecipeWithLikes extends Recipe {
+    like_count: number;
+    has_liked: boolean;
+}
+
 const HomePage = () => {
-    /* 
-     State definition: 'recipes' will hold the array of recipe objects.
-     Initial value is an empty array [], and we use the <Recipe[]> 
-     generic to tell TypeScript what kind of data to expect.
-  */
-    const [recipes, setRecipes] = useState<Recipe[]>([]);
+    // Access the current user to see if they've liked any of these recipes.
+    const { user } = useAuth();
+    const navigate = useNavigate();
 
-    /* 
-     Loading state: Boolean used to show a spinner or placeholder 
-     while the data is being fetched from the database.
-  */
+    // Memory to hold our enhanced recipe list.
+    const [recipes, setRecipes] = useState<RecipeWithLikes[]>([]);
+    // Global loading state.
     const [loading, setLoading] = useState(true);
 
-    /* 
-     The 'useEffect' hook with an empty dependency array ([]) 
-     ensures the code inside runs exactly once when the component mounts.
-  */
+    /**
+     * fetchRecipes: Grabs all recipes and their associated like counts.
+     */
+    const fetchRecipes = async () => {
+        try {
+            setLoading(true);
+
+            // Fetch recipes and all associated likes in one go using Supabase's powerful nesting.
+            // 'likes(user_id)' tells Supabase to join the likes table for each recipe.
+            const { data, error } = await supabase
+                .from("recipes")
+                .select("*, likes:likes(user_id)")
+                .order("created_at", { ascending: false });
+
+            if (error) throw error;
+
+            // Process the data to calculate counts and check if the current user has liked each one.
+            const processedRecipes = (data || []).map((recipe: any) => ({
+                ...recipe,
+                // The total number of likes is just the length of the likes array returned by Supabase.
+                like_count: recipe.likes?.length || 0,
+                // We check if the current user's ID exists anywhere in that likes array.
+                has_liked: recipe.likes?.some((l: any) => l.user_id === user?.id) || false,
+            }));
+
+            setRecipes(processedRecipes);
+        } catch (error) {
+            console.error("Error fetching recipes:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // Re-fetch when the component mounts or when the user changes (log in/out).
     useEffect(() => {
-        /**
-         * fetchRecipes: An asynchronous function defined inside the effect
-         * to handle the Supabase communication.
-         */
-        const fetchRecipes = async () => {
-            try {
-                // Set loading to true before starting the fetch to trigger UI updates.
-                setLoading(true);
-
-                /* 
-           The Supabase query:
-           1. .from('recipes') -> Target the database table named 'recipes'.
-           2. .select('*') -> Retrieve all columns for each row.
-           3. .order('created_at', { ascending: false }) -> Sort the results 
-              so the most recently created recipes appear first.
-        */
-                const { data, error } = await supabase.from("recipes").select("*").order("created_at", { ascending: false });
-
-                // If the query returns an error, jump to the catch block.
-                if (error) throw error;
-
-                /* 
-           Update the 'recipes' state with the retrieved data. 
-           If 'data' is null for some reason, we default to an empty array.
-        */
-                setRecipes(data || []);
-            } catch (error) {
-                // Log the error to the console for debugging purposes.
-                console.error("Error fetching recipes:", error);
-            } finally {
-                /* 
-           The 'finally' block runs regardless of success or failure, 
-           ensuring we stop the loading animation.
-        */
-                setLoading(false);
-            }
-        };
-
-        // Execute the function we just defined.
         fetchRecipes();
-    }, []); // End of useEffect
+    }, [user?.id]);
+
+    /**
+     * handleLike: Toggles the like status for a recipe directly from the home feed.
+     */
+    const handleLike = async (recipeId: string, hasLiked: boolean) => {
+        // If they aren't logged in, they can't like things. Send them to login.
+        if (!user) {
+            toast.error("Sign in to like recipes!");
+            navigate("/login");
+            return;
+        }
+
+        // OPTIMISTIC UPDATE:
+        // We update the UI immediately before the database responds to make the app feel "instant".
+        setRecipes(prev => prev.map(r => {
+            if (r.id === recipeId) {
+                return {
+                    ...r,
+                    has_liked: !hasLiked,
+                    like_count: hasLiked ? r.like_count - 1 : r.like_count + 1
+                };
+            }
+            return r;
+        }));
+
+        try {
+            if (hasLiked) {
+                // If they already liked it, we remove the row from the 'likes' table.
+                await supabase.from("likes").delete().eq("recipe_id", recipeId).eq("user_id", user.id);
+            } else {
+                // If they haven't liked it, we insert a new row.
+                await supabase.from("likes").insert({ recipe_id: recipeId, user_id: user.id });
+            }
+        } catch (error) {
+            // If the database call fails, we should technically revert the UI, 
+            // but for now we'll just log it and maybe show a toast.
+            console.error("Like error:", error);
+            toast.error("Something went wrong with that like.");
+        }
+    };
 
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12 pb-20">
-            {/* Hero / Introduction Section */}
+            {/* Hero Section */}
             <section className="text-center py-16 space-y-6">
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-pink-600/10 border border-pink-500/20 text-pink-500 text-xs font-bold uppercase tracking-widest animate-pulse">
                     <UtensilsCrossed className="w-3 h-3" />
@@ -111,14 +121,13 @@ const HomePage = () => {
                 </h1>
                 <p className="max-w-2xl mx-auto text-zinc-400 text-lg md:text-xl font-medium leading-relaxed">Join a community of home chefs sharing their best-kept secrets. Find inspiration for your next meal or share your own masterpiece.</p>
 
-                {/* Search Bar Placeholder */}
                 <div className="max-w-xl mx-auto relative group">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500 group-focus-within:text-pink-500 transition-colors" />
                     <input type="text" placeholder="Search recipes, ingredients, or chefs..." className="w-full bg-zinc-900/50 border border-zinc-800 rounded-2xl py-4 pl-12 pr-4 text-white placeholder:text-zinc-600 focus:outline-none focus:border-pink-600/50 focus:ring-1 focus:ring-pink-600/50 transition-all backdrop-blur-sm" />
                 </div>
             </section>
 
-            {/* Recipe Feed Section */}
+            {/* Feed Section */}
             <section>
                 <div className="flex items-end justify-between mb-8">
                     <div>
@@ -133,7 +142,6 @@ const HomePage = () => {
                     </Link>
                 </div>
 
-                {/* LOADING STATE: Skeletons */}
                 {loading ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
                         {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
@@ -141,14 +149,23 @@ const HomePage = () => {
                         ))}
                     </div>
                 ) : recipes.length > 0 ? (
-                    // REAL DATA: Recipe Grid
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
                         {recipes.map((recipe) => (
-                            <RecipeCard key={recipe.id} recipe={recipe} />
+                            <RecipeCard 
+                                key={recipe.id} 
+                                recipe={recipe} 
+                                likeCount={recipe.like_count}
+                                hasLiked={recipe.has_liked}
+                                // We stop the card's main 'Link' click from firing if they click exactly on the heart.
+                                onLike={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleLike(recipe.id, recipe.has_liked);
+                                }}
+                            />
                         ))}
                     </div>
                 ) : (
-                    // EMPTY STATE: No recipes found
                     <div className="flex flex-col items-center justify-center py-24 text-center space-y-6 bg-zinc-900/30 rounded-[3rem] border border-dashed border-zinc-800">
                         <div className="bg-zinc-900 p-6 rounded-3xl">
                             <UtensilsCrossed className="w-12 h-12 text-zinc-700" />

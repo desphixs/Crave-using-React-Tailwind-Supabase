@@ -1,130 +1,180 @@
-// Import React hooks for lifecycle, state, and side effects.
+// Import React hooks for managing memory and side effects.
 import React, { useEffect, useState } from "react";
 
-// Import routing tools to read the URL and create links between pages.
-import { useParams, Link } from "react-router-dom";
+// Import routing tools to read the URL and navigate between pages.
+import { useParams, Link, useNavigate } from "react-router-dom";
 
-// Import the Supabase client to communicate with our backend database.
+// Import the Supabase client to talk to our database.
 import { supabase } from "@/lib/supabase";
 
-// Import our custom authentication hook to check if a user is currently logged in.
+// Import our custom authentication hook.
 import { useAuth } from "@/context/AuthContext";
 
-// Import our TypeScript blueprints (types) for Recipes and Comments.
+// Import our TypeScript blueprints.
 import type { Recipe, Comment } from "@/types";
 
-// Import beautiful UI components for buttons and notifications.
+// Import UI components.
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
-// Import icons from Lucide to enhance the visual design.
-import { Loader2, ArrowLeft, Calendar, ChefHat, Clock, ClipboardList, Utensils, MessageSquare, Send, User } from "lucide-react";
+// Import icons to make the UI beautiful.
+import { Loader2, ArrowLeft, Calendar, ChefHat, Clock, ClipboardList, Utensils, MessageSquare, Send, User, Heart } from "lucide-react";
 
-// The RecipeDetailPage component handles showing all details for a single recipe and its comments.
 const RecipeDetailPage = () => {
-    // Grab the 'id' parameter from the URL (e.g., in /recipe/123, id is 123).
+    // Read the ID from the URL.
     const { id } = useParams();
-
-    // Access the current logged-in user from our global Auth context.
+    
+    // Access the current user and navigation tool.
     const { user } = useAuth();
+    const navigate = useNavigate();
 
-    // --- RECIPE STATE ---
-    // Memory for the recipe object we are fetching.
+    // --- RECIPE & LIKE STATE ---
     const [recipe, setRecipe] = useState<Recipe | null>(null);
-    // Memory for the initial page load spinner.
     const [loading, setLoading] = useState(true);
-    // Memory for any errors that occur while fetching the recipe.
     const [error, setError] = useState<string | null>(null);
+    
+    // Memory to track how many likes this recipe has.
+    const [likeCount, setLikeCount] = useState(0);
+    // Memory to track if the current viewer has liked this recipe.
+    const [hasLiked, setHasLiked] = useState(false);
 
     // --- COMMENTS STATE ---
-    // Memory to hold an array of comments related to this specific recipe.
     const [comments, setComments] = useState<Comment[]>([]);
-    // Memory for the text the user is currently typing in the comment box.
     const [newComment, setNewComment] = useState("");
-    // Memory to show a small loading spinner inside the "Post" button while saving.
     const [submitting, setSubmitting] = useState(false);
 
     /**
-     * fetchRecipe: Grabs the core recipe data from Supabase.
+     * fetchRecipeData: Grabs the recipe and its associated like info.
      */
-    const fetchRecipe = async () => {
+    const fetchRecipeData = async () => {
         try {
-            setLoading(true); // Start the loading animation.
-            // Query Supabase for the recipe matching the ID in the URL.
-            const { data, error } = await supabase.from("recipes").select("*").eq("id", id).single();
-            if (error) throw error; // If something broke, jump to catch.
-            setRecipe(data); // Save the recipe to memory.
+            setLoading(true);
+
+            // 1. Fetch the main recipe record.
+            const { data: recipeData, error: recipeError } = await supabase
+                .from("recipes")
+                .select("*")
+                .eq("id", id)
+                .single();
+            if (recipeError) throw recipeError;
+            setRecipe(recipeData);
+
+            // 2. Fetch the total count of likes for this recipe.
+            const { count, error: countError } = await supabase
+                .from("likes")
+                .select("*", { count: 'exact', head: true }) // head: true means "just get the count, don't return the rows".
+                .eq("recipe_id", id);
+            if (countError) throw countError;
+            setLikeCount(count || 0);
+
+            // 3. Check if the current user has liked it.
+            if (user) {
+                const { data: likeData, error: likeError } = await supabase
+                    .from("likes")
+                    .select("*")
+                    .eq("recipe_id", id)
+                    .eq("user_id", user.id)
+                    .maybeSingle(); // maybeSingle returns null if no row exists, instead of throwing an error.
+                if (likeError) throw likeError;
+                setHasLiked(!!likeData); // Double-bang (!!) converts the object to 'true' or null to 'false'.
+            }
+
         } catch (err: any) {
-            console.error("Error fetching recipe:", err);
+            console.error("Error fetching recipe data:", err);
             setError(err.message || "Could not load the recipe.");
         } finally {
-            setLoading(false); // Stop the loading animation.
+            setLoading(false);
         }
     };
 
     /**
-     * fetchComments: Grabs all comments associated with this recipe.
+     * fetchComments: Grabs all comments for the recipe.
      */
     const fetchComments = async () => {
         try {
-            // Query Supabase for comments where 'recipe_id' matches our current recipe.
-            // We order them by 'created_at' ascending so the oldest comments are at the top.
-            const { data, error } = await supabase.from("comments").select("*").eq("recipe_id", id).order("created_at", { ascending: true });
+            const { data, error } = await supabase
+                .from("comments")
+                .select("*")
+                .eq("recipe_id", id)
+                .order("created_at", { ascending: true });
             if (error) throw error;
-            setComments(data || []); // Save the comments list to memory.
+            setComments(data || []);
         } catch (err) {
             console.error("Error fetching comments:", err);
         }
     };
 
-    // Effect hook to load the recipe and comments when the page first opens.
+    // Load everything when the component mounts.
     useEffect(() => {
         if (id) {
-            fetchRecipe();
+            fetchRecipeData();
             fetchComments();
         }
-    }, [id]); // Re-run if the ID in the URL changes.
+    }, [id, user?.id]); // Re-run if ID or User changes.
 
     /**
-     * handleCommentSubmit: Saves a new comment to the database.
+     * handleLike: Toggles the like status with an optimistic update.
+     */
+    const handleLike = async () => {
+        // Must be logged in to like.
+        if (!user) {
+            toast.error("Please sign in to like this recipe!");
+            navigate("/login");
+            return;
+        }
+
+        // OPTIMISTIC UPDATE:
+        // Update the UI immediately so the user feels the app is super fast.
+        const originalLiked = hasLiked;
+        const originalCount = likeCount;
+        
+        setHasLiked(!originalLiked);
+        setLikeCount(prev => originalLiked ? prev - 1 : prev + 1);
+
+        try {
+            if (originalLiked) {
+                // If already liked, remove it.
+                const { error } = await supabase.from("likes").delete().eq("recipe_id", id).eq("user_id", user.id);
+                if (error) throw error;
+            } else {
+                // If not liked, add it.
+                const { error } = await supabase.from("likes").insert({ recipe_id: id, user_id: user.id });
+                if (error) throw error;
+            }
+        } catch (error) {
+            // If it fails, revert the state to what it was before.
+            setHasLiked(originalLiked);
+            setLikeCount(originalCount);
+            toast.error("Could not update your like. Please try again.");
+        }
+    };
+
+    /**
+     * handleCommentSubmit: Saves a new comment.
      */
     const handleCommentSubmit = async (e: React.FormEvent) => {
-        e.preventDefault(); // Stop the page from refreshing.
-
-        // If the comment is empty or just spaces, don't do anything.
+        e.preventDefault();
         if (!newComment.trim()) return;
-
-        // Double check if the user is logged in (though the form should be hidden if they aren't).
         if (!user) {
             toast.error("You must be logged in to comment");
             return;
         }
 
-        setSubmitting(true); // Show the loading state on the button.
-
+        setSubmitting(true);
         try {
-            // Insert the new comment into the 'comments' table.
-            const { error } = await supabase.from("comments").insert([
-                {
-                    content: newComment.trim(),
-                    recipe_id: id,
-                    user_id: user.id, // Tie the comment to the logged-in user.
-                },
-            ]);
-
+            const { error } = await supabase.from("comments").insert([{ content: newComment.trim(), recipe_id: id, user_id: user.id }]);
             if (error) throw error;
-
-            toast.success("Comment posted!"); // Show a success notification.
-            setNewComment(""); // Clear the text area for the next comment.
-            fetchComments(); // Refresh the comments list so the new one appears instantly.
+            toast.success("Comment posted!");
+            setNewComment("");
+            fetchComments();
         } catch (error: any) {
             toast.error(error.message || "Failed to post comment");
         } finally {
-            setSubmitting(false); // Hide the loading state on the button.
+            setSubmitting(false);
         }
     };
 
-    // --- LOADING & ERROR UI ---
+    // --- RENDER LOGIC ---
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
@@ -152,26 +202,41 @@ const RecipeDetailPage = () => {
         );
     }
 
-    // --- DATE FORMATTING ---
     const formattedDate = new Date(recipe.created_at).toLocaleDateString("en-US", {
         year: "numeric",
         month: "long",
         day: "numeric",
     });
 
-    // --- MAIN RENDER ---
     return (
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pb-24 space-y-12">
-            {/* Back Navigation */}
-            <Link to="/dashboard" className="inline-flex items-center text-zinc-400 hover:text-pink-500 transition-colors font-medium text-sm">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Feed
-            </Link>
+            {/* Header / Back Navigation */}
+            <div className="flex items-center justify-between">
+                <Link to="/dashboard" className="inline-flex items-center text-zinc-400 hover:text-pink-500 transition-colors font-medium text-sm">
+                    <ArrowLeft className="w-4 h-4 mr-2" />
+                    Back to Feed
+                </Link>
+            </div>
 
             {/* --- HERO SECTION --- */}
             <div className="relative aspect-video md:aspect-[21/9] rounded-[2rem] overflow-hidden bg-zinc-900 border border-zinc-800 shadow-2xl">
                 {recipe.image_url ? <img src={recipe.image_url} alt={recipe.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-800 text-zinc-600 font-medium">No image provided</div>}
+                
+                {/* Dark Gradient Overlay */}
                 <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/60 to-transparent" />
+                
+                {/* LIKE BUTTON (Detail Page) */}
+                <button 
+                    onClick={handleLike}
+                    className="absolute top-8 right-8 z-20 group/like transition-transform active:scale-90"
+                >
+                    <div className="flex flex-col items-center gap-1.5 p-4 rounded-3xl bg-black/30 backdrop-blur-xl border border-white/10 text-white min-w-[70px]">
+                        <Heart className={`w-8 h-8 transition-all duration-300 ${hasLiked ? "fill-pink-500 text-pink-500 scale-110" : "text-white group-hover/like:text-pink-400 group-hover/like:scale-110"}`} />
+                        <span className="text-xs font-black font-mono tracking-tighter">{likeCount}</span>
+                    </div>
+                </button>
+
+                {/* HERO TEXT */}
                 <div className="absolute bottom-0 left-0 right-0 p-8 md:p-12 space-y-4">
                     <span className="inline-block px-4 py-1.5 rounded-full bg-pink-600/90 backdrop-blur-md text-xs font-bold uppercase tracking-widest text-white border border-pink-500/50">{recipe.category}</span>
                     <h1 className="text-4xl md:text-6xl font-black text-white tracking-tight leading-tight">{recipe.title}</h1>
@@ -217,7 +282,6 @@ const RecipeDetailPage = () => {
 
             {/* --- COMMENTS SECTION --- */}
             <div className="pt-12 space-y-10 border-t border-zinc-900">
-                {/* Section header with total comment count. */}
                 <div className="flex items-center gap-3">
                     <MessageSquare className="w-7 h-7 text-pink-500" />
                     <h2 className="text-3xl font-black text-white tracking-tight">
@@ -225,10 +289,9 @@ const RecipeDetailPage = () => {
                     </h2>
                 </div>
 
-                {/* --- COMMENT FORM --- */}
+                {/* Comment Form */}
                 <div className="bg-zinc-900/40 border border-zinc-800 p-8 rounded-[2rem] space-y-6">
                     {user ? (
-                        // If the user is logged in, show the input form.
                         <form onSubmit={handleCommentSubmit} className="space-y-4">
                             <textarea
                                 value={newComment}
@@ -244,7 +307,6 @@ const RecipeDetailPage = () => {
                             </div>
                         </form>
                     ) : (
-                        // If the user is logged out, show a prompt to log in.
                         <div className="py-6 text-center space-y-4">
                             <p className="text-zinc-400 font-medium">Have something to say? Join the conversation.</p>
                             <Link to="/login">
@@ -256,35 +318,26 @@ const RecipeDetailPage = () => {
                     )}
                 </div>
 
-                {/* --- COMMENTS LIST --- */}
+                {/* Comments List */}
                 <div className="space-y-6">
                     {comments.length > 0 ? (
-                        // If there are comments, map through them and render each one.
                         comments.map((comment) => (
                             <div key={comment.id} className="flex gap-4 p-6 rounded-3xl bg-zinc-900/20 border border-zinc-900 transition-colors hover:border-zinc-800 group">
-                                {/* Small avatar icon for the user. */}
                                 <div className="flex-shrink-0 w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-500 group-hover:bg-pink-600/10 group-hover:text-pink-500 transition-colors">
                                     <User className="w-5 h-5" />
                                 </div>
                                 <div className="flex-1 space-y-2">
-                                    {/* Display the timestamp of the comment. */}
                                     <div className="flex items-center justify-between">
                                         <span className="text-xs font-bold text-zinc-500 tracking-wider uppercase">
                                             {new Date(comment.created_at).toLocaleDateString()}
                                         </span>
                                     </div>
-                                    {/* Display the actual comment content. */}
-                                    <p className="text-zinc-300 leading-relaxed">
-                                        {comment.content}
-                                    </p>
+                                    <p className="text-zinc-300 leading-relaxed">{comment.content}</p>
                                 </div>
                             </div>
                         ))
                     ) : (
-                        // If no comments exist yet, show a subtle empty state.
-                        <p className="text-center py-10 text-zinc-600 font-medium italic border border-dashed border-zinc-900 rounded-3xl">
-                            Be the first to leave a comment...
-                        </p>
+                        <p className="text-center py-10 text-zinc-600 font-medium italic border border-dashed border-zinc-900 rounded-3xl">Be the first to leave a comment...</p>
                     )}
                 </div>
             </div>
