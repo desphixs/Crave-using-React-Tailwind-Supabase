@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { MOCK_RECIPES } from "./mockData";
 import { StaticNavbar, StaticRecipeCard } from "./StaticComponents";
-import { Utensils, Loader2, Search, Heart, Bookmark, Mail, Lock, Plus, ArrowRight, ArrowLeft, Edit3, Trash2, ClipboardList, Type, Hash, Image as ImageIcon, UtensilsCrossed, User, Send, Calendar, MessageSquare, LayoutDashboard, PlusCircle } from "lucide-react";
+import { Utensils, Loader2, Search, Heart, Bookmark, Mail, Lock, Plus, ArrowRight, ArrowLeft, Edit3, Trash2, ClipboardList, Type, Hash, Image as ImageIcon, UtensilsCrossed, User, Send, Calendar, MessageSquare, LayoutDashboard, PlusCircle, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
