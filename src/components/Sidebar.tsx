@@ -30,16 +30,6 @@ const Sidebar = () => {
           </NavLink>
         ))}
       </div>
-      
-      <div className="absolute bottom-8 left-0 right-0 px-6">
-        <div className="p-4 bg-gradient-to-br from-zinc-900 to-black rounded-2xl border border-zinc-800">
-          <p className="text-xs text-zinc-500 uppercase tracking-widest font-bold mb-2">Pro Plan</p>
-          <p className="text-sm text-zinc-300 mb-3">Unlock unlimited recipe storage.</p>
-          <button className="w-full py-2 bg-white text-black text-xs font-bold rounded-lg hover:bg-pink-500 hover:text-white transition-colors">
-            Upgrade
-          </button>
-        </div>
-      </div>
     </aside>
   );
 };
