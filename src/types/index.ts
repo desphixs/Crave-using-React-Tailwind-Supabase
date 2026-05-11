@@ -20,3 +20,12 @@ export interface AuthUser {
   id: string;
   email?: string;
 }
+
+export interface Comment {
+  id: string;
+  created_at: string;
+  recipe_id: string;
+  user_id: string;
+  content: string;
+  // Optional: We might want the user's email later, but for now this matches our DB schema.
+}

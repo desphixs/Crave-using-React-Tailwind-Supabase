@@ -1,98 +1,147 @@
-// Import React and hooks for managing component lifecycle and state.
+// Import React hooks for lifecycle, state, and side effects.
 import React, { useEffect, useState } from "react";
 
-// Import routing hooks: useParams gets the ID from the URL, Link creates navigable buttons.
+// Import routing tools to read the URL and create links between pages.
 import { useParams, Link } from "react-router-dom";
 
-// Import the Supabase client to fetch data from the database.
+// Import the Supabase client to communicate with our backend database.
 import { supabase } from "@/lib/supabase";
 
-// Import the Recipe type blueprint so TypeScript knows our data shape.
-import type { Recipe } from "@/types";
+// Import our custom authentication hook to check if a user is currently logged in.
+import { useAuth } from "@/context/AuthContext";
 
-// Import the Button component for beautiful, styled actions.
+// Import our TypeScript blueprints (types) for Recipes and Comments.
+import type { Recipe, Comment } from "@/types";
+
+// Import beautiful UI components for buttons and notifications.
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
-// Import icons from Lucide to make the UI look professional.
-import { Loader2, ArrowLeft, Calendar, ChefHat, Clock, ClipboardList, Utensils } from "lucide-react";
+// Import icons from Lucide to enhance the visual design.
+import { Loader2, ArrowLeft, Calendar, ChefHat, Clock, ClipboardList, Utensils, MessageSquare, Send, User } from "lucide-react";
 
-// Define the RecipeDetailPage component.
+// The RecipeDetailPage component handles showing all details for a single recipe and its comments.
 const RecipeDetailPage = () => {
-    // Destructure the 'id' parameter from the current URL (e.g., /recipe/:id).
+    // Grab the 'id' parameter from the URL (e.g., in /recipe/123, id is 123).
     const { id } = useParams();
 
-    // Create a state variable to hold the fetched recipe data. It starts as null.
+    // Access the current logged-in user from our global Auth context.
+    const { user } = useAuth();
+
+    // --- RECIPE STATE ---
+    // Memory for the recipe object we are fetching.
     const [recipe, setRecipe] = useState<Recipe | null>(null);
-
-    // Create a loading state to show a spinner while data is being fetched.
+    // Memory for the initial page load spinner.
     const [loading, setLoading] = useState(true);
-
-    // Create an error state to hold any messages if the fetch fails.
+    // Memory for any errors that occur while fetching the recipe.
     const [error, setError] = useState<string | null>(null);
 
-    // Use the useEffect hook to run the fetch logic as soon as the page loads.
+    // --- COMMENTS STATE ---
+    // Memory to hold an array of comments related to this specific recipe.
+    const [comments, setComments] = useState<Comment[]>([]);
+    // Memory for the text the user is currently typing in the comment box.
+    const [newComment, setNewComment] = useState("");
+    // Memory to show a small loading spinner inside the "Post" button while saving.
+    const [submitting, setSubmitting] = useState(false);
+
+    /**
+     * fetchRecipe: Grabs the core recipe data from Supabase.
+     */
+    const fetchRecipe = async () => {
+        try {
+            setLoading(true); // Start the loading animation.
+            // Query Supabase for the recipe matching the ID in the URL.
+            const { data, error } = await supabase.from("recipes").select("*").eq("id", id).single();
+            if (error) throw error; // If something broke, jump to catch.
+            setRecipe(data); // Save the recipe to memory.
+        } catch (err: any) {
+            console.error("Error fetching recipe:", err);
+            setError(err.message || "Could not load the recipe.");
+        } finally {
+            setLoading(false); // Stop the loading animation.
+        }
+    };
+
+    /**
+     * fetchComments: Grabs all comments associated with this recipe.
+     */
+    const fetchComments = async () => {
+        try {
+            // Query Supabase for comments where 'recipe_id' matches our current recipe.
+            // We order them by 'created_at' ascending so the oldest comments are at the top.
+            const { data, error } = await supabase.from("comments").select("*").eq("recipe_id", id).order("created_at", { ascending: true });
+            if (error) throw error;
+            setComments(data || []); // Save the comments list to memory.
+        } catch (err) {
+            console.error("Error fetching comments:", err);
+        }
+    };
+
+    // Effect hook to load the recipe and comments when the page first opens.
     useEffect(() => {
-        // Define an asynchronous function to fetch the recipe from Supabase.
-        const fetchRecipe = async () => {
-            try {
-                // Ensure the loading spinner is visible before starting the fetch.
-                setLoading(true);
-
-                // Ask Supabase to find a single recipe where the 'id' column matches our URL 'id'.
-                const { data, error } = await supabase
-                    .from("recipes")
-                    .select("*")
-                    .eq("id", id)
-                    .single(); // .single() tells Supabase we only expect ONE result, not an array.
-
-                // If Supabase throws an error (e.g., network failure or ID not found), throw it.
-                if (error) throw error;
-
-                // If we get data back, save it into our 'recipe' state memory.
-                setRecipe(data);
-            } catch (err: any) {
-                // If anything goes wrong, catch the error and save a message into our 'error' state.
-                console.error("Error fetching recipe:", err);
-                setError(err.message || "Could not load the recipe.");
-            } finally {
-                // Whether it succeeded or failed, turn off the loading spinner.
-                setLoading(false);
-            }
-        };
-
-        // If we actually have an ID from the URL, execute the fetch function.
         if (id) {
             fetchRecipe();
+            fetchComments();
         }
-    }, [id]); // This effect will re-run if the 'id' in the URL ever changes.
+    }, [id]); // Re-run if the ID in the URL changes.
 
-    // SCENARIO 1: The data is currently being fetched (loading is true).
+    /**
+     * handleCommentSubmit: Saves a new comment to the database.
+     */
+    const handleCommentSubmit = async (e: React.FormEvent) => {
+        e.preventDefault(); // Stop the page from refreshing.
+
+        // If the comment is empty or just spaces, don't do anything.
+        if (!newComment.trim()) return;
+
+        // Double check if the user is logged in (though the form should be hidden if they aren't).
+        if (!user) {
+            toast.error("You must be logged in to comment");
+            return;
+        }
+
+        setSubmitting(true); // Show the loading state on the button.
+
+        try {
+            // Insert the new comment into the 'comments' table.
+            const { error } = await supabase.from("comments").insert([
+                {
+                    content: newComment.trim(),
+                    recipe_id: id,
+                    user_id: user.id, // Tie the comment to the logged-in user.
+                },
+            ]);
+
+            if (error) throw error;
+
+            toast.success("Comment posted!"); // Show a success notification.
+            setNewComment(""); // Clear the text area for the next comment.
+            fetchComments(); // Refresh the comments list so the new one appears instantly.
+        } catch (error: any) {
+            toast.error(error.message || "Failed to post comment");
+        } finally {
+            setSubmitting(false); // Hide the loading state on the button.
+        }
+    };
+
+    // --- LOADING & ERROR UI ---
     if (loading) {
         return (
-            // Return a simple, centered loading screen.
             <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
-                {/* Show a spinning loader icon in pink. */}
                 <Loader2 className="w-12 h-12 text-pink-500 animate-spin" />
-                {/* Display a friendly loading message. */}
                 <p className="text-zinc-400 font-medium tracking-wide">Warming up the oven...</p>
             </div>
         );
     }
 
-    // SCENARIO 2: There was an error, or the recipe doesn't exist.
     if (error || !recipe) {
         return (
-            // Return a centered error screen.
             <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6">
-                {/* Display an icon to indicate emptiness. */}
                 <ChefHat className="w-16 h-16 text-zinc-700" />
                 <div className="space-y-2">
-                    {/* Show a bold error title. */}
                     <h2 className="text-3xl font-bold text-white">Recipe Not Found</h2>
-                    {/* Show the specific error message, or a fallback. */}
                     <p className="text-zinc-500">{error || "This recipe might have been deleted."}</p>
                 </div>
-                {/* Provide a button to let the user navigate back to the Home feed safely. */}
                 <Link to="/dashboard">
                     <Button variant="outline" className="rounded-xl mt-4">
                         <ArrowLeft className="w-4 h-4 mr-2" />
@@ -103,64 +152,34 @@ const RecipeDetailPage = () => {
         );
     }
 
-    // Format the date dynamically using the built-in JavaScript Date object.
+    // --- DATE FORMATTING ---
     const formattedDate = new Date(recipe.created_at).toLocaleDateString("en-US", {
         year: "numeric",
         month: "long",
         day: "numeric",
     });
 
-    // SCENARIO 3: The data has successfully loaded. Render the full page!
+    // --- MAIN RENDER ---
     return (
-        // Wrap the whole page in a container that handles maximum width and responsive padding.
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pb-24 space-y-12">
-            
-            {/* Provide a 'Back' button at the very top for easy navigation. */}
+            {/* Back Navigation */}
             <Link to="/dashboard" className="inline-flex items-center text-zinc-400 hover:text-pink-500 transition-colors font-medium text-sm">
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Back to Feed
             </Link>
 
             {/* --- HERO SECTION --- */}
-            {/* Create a large container with a rounded border and an aspect ratio suitable for a hero image. */}
             <div className="relative aspect-video md:aspect-[21/9] rounded-[2rem] overflow-hidden bg-zinc-900 border border-zinc-800 shadow-2xl">
-                {/* If the recipe has an image, render an img tag. */}
-                {recipe.image_url ? (
-                    <img 
-                        src={recipe.image_url} 
-                        alt={recipe.title} 
-                        // Make the image cover the entire container perfectly.
-                        className="w-full h-full object-cover" 
-                    />
-                ) : (
-                    // If no image exists, show a stylish fallback placeholder with a chef hat icon.
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-800">
-                        <ChefHat className="w-20 h-20 text-zinc-700 mb-4" />
-                        <span className="text-zinc-600 font-medium">No image provided</span>
-                    </div>
-                )}
-                
-                {/* Add a smooth dark gradient overlay so the text is always legible over the image. */}
+                {recipe.image_url ? <img src={recipe.image_url} alt={recipe.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-800 text-zinc-600 font-medium">No image provided</div>}
                 <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/60 to-transparent" />
-                
-                {/* Position the title and metadata in the bottom left corner, floating over the gradient. */}
                 <div className="absolute bottom-0 left-0 right-0 p-8 md:p-12 space-y-4">
-                    {/* Display the Category as a floating badge. */}
-                    <span className="inline-block px-4 py-1.5 rounded-full bg-pink-600/90 backdrop-blur-md text-xs font-bold uppercase tracking-widest text-white border border-pink-500/50">
-                        {recipe.category}
-                    </span>
-                    {/* Render the Recipe Title in huge, bold text. */}
-                    <h1 className="text-4xl md:text-6xl font-black text-white tracking-tight leading-tight">
-                        {recipe.title}
-                    </h1>
-                    {/* Render a row of tiny metadata items like the Date and Prep Time. */}
+                    <span className="inline-block px-4 py-1.5 rounded-full bg-pink-600/90 backdrop-blur-md text-xs font-bold uppercase tracking-widest text-white border border-pink-500/50">{recipe.category}</span>
+                    <h1 className="text-4xl md:text-6xl font-black text-white tracking-tight leading-tight">{recipe.title}</h1>
                     <div className="flex flex-wrap items-center gap-6 text-zinc-300 text-sm font-medium pt-2">
-                        {/* Display the dynamically formatted date next to a calendar icon. */}
                         <div className="flex items-center gap-2">
                             <Calendar className="w-4 h-4 text-pink-500" />
                             <span>{formattedDate}</span>
                         </div>
-                        {/* Show a placeholder cook time (since we didn't add it to the DB schema initially). */}
                         <div className="flex items-center gap-2">
                             <Clock className="w-4 h-4 text-pink-500" />
                             <span>45 mins cook time</span>
@@ -169,54 +188,108 @@ const RecipeDetailPage = () => {
                 </div>
             </div>
 
-            {/* --- CONTENT SECTION --- */}
-            {/* If the user wrote a description, display it spanning the full width beneath the hero. */}
-            {recipe.description && (
-                <p className="text-xl text-zinc-300 leading-relaxed max-w-3xl">
-                    {recipe.description}
-                </p>
-            )}
+            {/* --- RECIPE CONTENT --- */}
+            {recipe.description && <p className="text-xl text-zinc-300 leading-relaxed max-w-3xl">{recipe.description}</p>}
 
-            {/* Create a CSS grid to split the page into two columns on large screens. */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 pt-8">
-                
-                {/* LEFT COLUMN: Ingredients (Takes up 1/3 of the space on large screens) */}
+                {/* Ingredients column */}
                 <div className="lg:col-span-1 space-y-6">
-                    {/* Section Header for Ingredients. */}
                     <div className="flex items-center gap-3 border-b border-zinc-800 pb-4">
                         <ClipboardList className="w-6 h-6 text-pink-500" />
                         <h2 className="text-2xl font-bold text-white tracking-tight">Ingredients</h2>
                     </div>
-                    {/* Render the ingredients inside a stylized dark box. */}
                     <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-6">
-                        {/* Format the raw text. whitespace-pre-wrap ensures that line breaks (Enters) are respected. */}
-                        <p className="text-zinc-300 leading-loose whitespace-pre-wrap">
-                            {/* If ingredients are missing, display a fallback message. */}
-                            {recipe.ingredients || "No specific ingredients listed."}
-                        </p>
+                        <p className="text-zinc-300 leading-loose whitespace-pre-wrap">{recipe.ingredients || "No specific ingredients listed."}</p>
                     </div>
                 </div>
 
-                {/* RIGHT COLUMN: Instructions (Takes up 2/3 of the space on large screens) */}
+                {/* Instructions column */}
                 <div className="lg:col-span-2 space-y-6">
-                    {/* Section Header for Instructions. */}
                     <div className="flex items-center gap-3 border-b border-zinc-800 pb-4">
                         <Utensils className="w-6 h-6 text-pink-500" />
                         <h2 className="text-2xl font-bold text-white tracking-tight">Instructions</h2>
                     </div>
-                    {/* Render the instructions text. */}
                     <div className="prose prose-invert prose-pink max-w-none">
-                        {/* whitespace-pre-wrap ensures paragraph breaks are displayed correctly. */}
-                        <p className="text-zinc-300 text-lg leading-relaxed whitespace-pre-wrap">
-                            {recipe.instructions}
-                        </p>
+                        <p className="text-zinc-300 text-lg leading-relaxed whitespace-pre-wrap">{recipe.instructions}</p>
                     </div>
                 </div>
+            </div>
 
+            {/* --- COMMENTS SECTION --- */}
+            <div className="pt-12 space-y-10 border-t border-zinc-900">
+                {/* Section header with total comment count. */}
+                <div className="flex items-center gap-3">
+                    <MessageSquare className="w-7 h-7 text-pink-500" />
+                    <h2 className="text-3xl font-black text-white tracking-tight">
+                        Comments <span className="text-pink-600 font-mono text-xl ml-1">({comments.length})</span>
+                    </h2>
+                </div>
+
+                {/* --- COMMENT FORM --- */}
+                <div className="bg-zinc-900/40 border border-zinc-800 p-8 rounded-[2rem] space-y-6">
+                    {user ? (
+                        // If the user is logged in, show the input form.
+                        <form onSubmit={handleCommentSubmit} className="space-y-4">
+                            <textarea
+                                value={newComment}
+                                onChange={(e) => setNewComment(e.target.value)}
+                                placeholder="What do you think about this recipe?"
+                                rows={4}
+                                className="w-full bg-zinc-950/50 border border-zinc-800 rounded-2xl p-4 text-white placeholder:text-zinc-600 focus:outline-none focus:border-pink-600/50 focus:ring-1 focus:ring-pink-600/50 transition-all resize-none shadow-inner"
+                            />
+                            <div className="flex justify-end">
+                                <Button type="submit" disabled={submitting || !newComment.trim()} className="rounded-xl px-8 h-12 font-bold transition-transform active:scale-95 shadow-lg shadow-pink-600/10">
+                                    {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Send className="w-4 h-4 mr-2" /> Post Comment</>}
+                                </Button>
+                            </div>
+                        </form>
+                    ) : (
+                        // If the user is logged out, show a prompt to log in.
+                        <div className="py-6 text-center space-y-4">
+                            <p className="text-zinc-400 font-medium">Have something to say? Join the conversation.</p>
+                            <Link to="/login">
+                                <Button variant="outline" className="rounded-xl border-pink-500/20 text-pink-500 hover:bg-pink-600/10 px-8">
+                                    Sign in to leave a comment
+                                </Button>
+                            </Link>
+                        </div>
+                    )}
+                </div>
+
+                {/* --- COMMENTS LIST --- */}
+                <div className="space-y-6">
+                    {comments.length > 0 ? (
+                        // If there are comments, map through them and render each one.
+                        comments.map((comment) => (
+                            <div key={comment.id} className="flex gap-4 p-6 rounded-3xl bg-zinc-900/20 border border-zinc-900 transition-colors hover:border-zinc-800 group">
+                                {/* Small avatar icon for the user. */}
+                                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-500 group-hover:bg-pink-600/10 group-hover:text-pink-500 transition-colors">
+                                    <User className="w-5 h-5" />
+                                </div>
+                                <div className="flex-1 space-y-2">
+                                    {/* Display the timestamp of the comment. */}
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold text-zinc-500 tracking-wider uppercase">
+                                            {new Date(comment.created_at).toLocaleDateString()}
+                                        </span>
+                                    </div>
+                                    {/* Display the actual comment content. */}
+                                    <p className="text-zinc-300 leading-relaxed">
+                                        {comment.content}
+                                    </p>
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        // If no comments exist yet, show a subtle empty state.
+                        <p className="text-center py-10 text-zinc-600 font-medium italic border border-dashed border-zinc-900 rounded-3xl">
+                            Be the first to leave a comment...
+                        </p>
+                    )}
+                </div>
             </div>
         </div>
     );
 };
 
-// Export the component so it can be used in App.tsx for routing.
 export default RecipeDetailPage;
